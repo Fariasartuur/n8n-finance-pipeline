@@ -1,0 +1,552 @@
+{
+  "name": "Email Faturas",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getAll",
+        "simple": false,
+        "filters": {
+          "q": "has:attachment from:(*@nubank.com.br OR *@picpay.com)"
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -96,
+        0
+      ],
+      "id": "f66b02c8-a087-46d7-9e77-2b097d16fb79",
+      "name": "Get many messages",
+      "webhookId": "88ca1e9c-684d-4331-a9d8-492e19e828a0",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1NLVoiP8hl0LoM0X",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        112,
+        0
+      ],
+      "id": "1c14ab4c-f33e-43a4-8867-d3c0530c63ac",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -304,
+        0
+      ],
+      "id": "73e7e926-e982-485e-84b9-3750d9997d6e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "q": "has:attachment from:(*@nubank.com.br OR *@picpay.com)"
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -96,
+        -160
+      ],
+      "id": "aefab564-531a-42a9-84fa-86120abc4f1e",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1NLVoiP8hl0LoM0X",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Captura a lista completa de todas as transações acumuladas que o loop finalizou\nconst transacoes = $('Loop Over Items').all();\nconst faturasAgrupadas = {};\n\n// Varre todas as transações já categorizadas e agrupa por Banco, Mês e Ano\nfor (const t of transacoes) {\n  const dados = t.json;\n  \n  // Cria uma chave única para cada fatura (ex: \"Nubank-maio-2026\")\n  const chaveFatura = `${dados.banco}-${dados.mes_referencia}-${dados.ano_referencia}`;\n  \n  if (!faturasAgrupadas[chaveFatura]) {\n    faturasAgrupadas[chaveFatura] = {\n      banco: dados.banco,\n      mes_referencia: dados.mes_referencia,\n      ano_referencia: dados.ano_referencia,\n      valor_total: 0,\n      compras: []\n    };\n  }\n  \n  // Força o valor a virar número decimal puro\n  const valorNum = parseFloat(dados.valor) || 0;\n  \n  faturasAgrupadas[chaveFatura].valor_total += valorNum;\n  faturasAgrupadas[chaveFatura].compras.push({\n    estabelecimento: dados.estabelecimento,\n    valor: valorNum,\n    // Pega a categoria gerada pela IA (se por acaso falhar, assume 'Compras')\n    categoria: dados.categoria || \"Compras\" \n  });\n}\n\n// 2. Transforma os grupos nos textos formatados em HTML para o Telegram\nconst output = [];\n\nfor (const chave in faturasAgrupadas) {\n  const fatura = faturasAgrupadas[chave];\n  \n  let textoTelegram = `📦 <b>Fatura Salva com Sucesso!</b>\\n\\n`;\n  textoTelegram += `🏦 <b>Banco:</b> ${fatura.banco.toUpperCase()}\\n`;\n  textoTelegram += `📅 <b>Referência:</b> ${fatura.mes_referencia}/${fatura.ano_referencia}\\n`;\n  textoTelegram += `💵 <b>Valor Total:</b> R$ ${fatura.valor_total.toFixed(2).replace('.', ',')}\\n\\n`;\n  textoTelegram += `🛒 <b>Resumo dos Gastos:</b>\\n`;\n  \n  // Adiciona cada compra do respectivo mês na listagem trazendo a categoria da IA\n  for (const compra of fatura.compras) {\n    const valorFormatado = compra.valor.toFixed(2).replace('.', ',');\n    textoTelegram += `• <code>${compra.estabelecimento}</code> [${compra.categoria}]: R$ ${valorFormatado}\\n`;\n  }\n  \n  textoTelegram += `\\n⚙️ <i>Status: Armazenado no PostgreSQL. Transações repetidas foram ignoradas via Upsert.</i>`;\n  \n  // Injeta no formato de saída padrão do n8n\n  output.push({\n    json: {\n      banco: fatura.banco,\n      mes_referencia: fatura.mes_referencia,\n      ano_referencia: fatura.ano_referencia,\n      mensagem_final: textoTelegram\n    }\n  });\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        -32
+      ],
+      "id": "cbe9825a-bd93-43fa-a530-1f6f4c46d4e0",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "chatId": "8474444456",
+        "text": "={{ $json.mensagem_final }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1664,
+        -32
+      ],
+      "id": "24701e8d-e247-41ac-a131-2f44f5882ccd",
+      "name": "Send a text message",
+      "webhookId": "6fa45e82-73dd-4c59-84ef-e188b2418143",
+      "credentials": {
+        "telegramApi": {
+          "id": "0AhbMEBV3pfMb7rI",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1216,
+        -16
+      ],
+      "id": "9e4ee86f-3c64-462d-a9be-d2cc6400dc37",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "llama3.2:3b",
+          "mode": "list",
+          "cachedResultName": "llama3.2:3b"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Estabelecimento: {{ $json.estabelecimento }}\n"
+            }
+          ]
+        },
+        "options": {
+          "system": "Você é um categorizador de despesas simplificado. \nSua tarefa é ler o nome de um estabelecimento e responder APENAS com uma das categorias da lista abaixo.\n\nCategorias válidas:\n- Alimentação\n- Assinaturas\n- Estudos\n- Transporte\n- Lazer\n- Compras\n- Saúde\n\nRegras:\n1. Responda APENAS com o nome da categoria (ex: Alimentação).\n2. Não escreva nenhuma frase, explicação, pontuação ou markdown.\n3. Se não souber, responda apenas: Compras.\n4. Nunca escreva mais do que apenas o nome da categoria.\n\nCategoria:"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.ollama",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        176
+      ],
+      "id": "37512b86-4164-4eb8-9d50-09964e6ae07a",
+      "name": "Message a model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "cKcsyTqY5WoSu5Ht",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "transacoes_cartao",
+          "mode": "list",
+          "cachedResultName": "transacoes_cartao"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "valor": "={{ $('Loop Over Items').item.json.valor }}",
+            "estabelecimento": "={{ $('Loop Over Items').item.json.estabelecimento }}",
+            "data_transacao": "={{ $('Loop Over Items').item.json.data_transacao }}",
+            "banco": "={{ $('Loop Over Items').item.json.banco }}",
+            "mes_referencia": "={{ $('Loop Over Items').item.json.mes_referencia }}",
+            "ano_referencia": "={{ $('Loop Over Items').item.json.ano_referencia }}",
+            "categoria": "={{ $json.content.replace(/\\./g, '').trim() }}"
+          },
+          "matchingColumns": [
+            "banco",
+            "data_transacao",
+            "estabelecimento",
+            "valor"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "banco",
+              "displayName": "banco",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "mes_referencia",
+              "displayName": "mes_referencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "ano_referencia",
+              "displayName": "ano_referencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "data_transacao",
+              "displayName": "data_transacao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "estabelecimento",
+              "displayName": "estabelecimento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "valor",
+              "displayName": "valor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data_importacao",
+              "displayName": "data_importacao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": true
+            },
+            {
+              "id": "categoria",
+              "displayName": "categoria",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1792,
+        176
+      ],
+      "id": "acb87cfe-cde5-4fdb-bca5-4ba4a70be803",
+      "name": "Insert or update rows in a table1",
+      "credentials": {
+        "postgres": {
+          "id": "d354ax4bgGEnmgLB",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT banco, data_transacao::text, estabelecimento, valor::text \nFROM transacoes_cartao;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        496,
+        0
+      ],
+      "id": "0e363854-a6ad-442e-b7ea-f89abecca244",
+      "name": "Execute a SQL query",
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "d354ax4bgGEnmgLB",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = typeof $input !== 'undefined' ? $input.all() : [];\nconst output = [];\n\n// Função auxiliar para converter os meses textuais (abreviados) para número (01 a 12)\nfunction converterMesParaNumero(mesStr) {\n  const meses = {\n    jan: \"01\", fev: \"02\", mar: \"03\", abr: \"04\", mai: \"05\", jun: \"06\",\n    jul: \"07\", ago: \"08\", set: \"09\", out: \"10\", nov: \"11\", dez: \"12\"\n  };\n  const busca = mesStr.toLowerCase().substring(0, 3);\n  return meses[busca] || \"01\";\n}\n\n// Função auxiliar para limpar o nome do estabelecimento de forma segura\nfunction limparEstabelecimento(nome) {\n  return nome\n    .replace(/\\n/g, ' ')                                      // Transforma quebras de linha em espaço\n    .replace(/\\s+/g, ' ')                                     // Remove espaços duplos\n    .replace(/PAG\\*/gi, '')                                   // Remove apenas o prefixo \"PAG*\" específico\n    .replace(/EBN\\s*\\*|DL\\s*\\*|DI\\s*\\*/gi, '')                // Remove intermediários comuns incluindo o \"DI*\" do HBO\n    .replace(/\\*/g, ' ')                                      // Substitui qualquer asterisco restante por espaço\n    .replace(/\\s+/g, ' ')                                     // Remove espaços duplos que sobraram das remoções\n    .trim();                                                  // Remove espaços no início e fim\n}\n\nfor (const item of items) {\n  const text = item.json.text || \"\";\n  \n  // ----------------------------------------------------\n  // EXTRAÇÃO NUBANK\n  // ----------------------------------------------------\n  if (text.includes(\"Nubank\") || text.includes(\"Olá, Artur.\\nEsta é a sua fatura de\")) {\n    let mes_referencia = null;\n    let ano_referencia = \"2026\"; \n    \n    const mesMatch = text.match(/fatura de\\s*\\n?([a-zA-Záàâãéèêíïóôõöúç]+)/i);\n    if (mesMatch) mes_referencia = mesMatch[1].trim().toLowerCase();\n    \n    const anoMatch = text.match(/vencimento:\\s*\\d+\\s*[A-Z]{3}\\s*([\\d]{4})/i);\n    if (anoMatch) ano_referencia = anoMatch[1];\n\n    const regexTransacao = /(\\d{2}\\s+[A-Z]{3})\\s*\\n?••••\\s*\\d{4}\\s+([\\s\\S]*?)\\s+R\\$\\s+([\\d.,]+)/g;\n    let match;\n\n    while ((match = regexTransacao.exec(text)) !== null) {\n      const data_resumida = match[1].trim();\n      const estabelecimento_bruto = match[2];\n      const valor_str = match[3];\n      const valor = parseFloat(valor_str.replace('.', '').replace(',', '.'));\n\n      // Aplica a limpeza segura\n      const estabelecimento = limparEstabelecimento(estabelecimento_bruto);\n\n      const [dia, mesTexto] = data_resumida.split(/\\s+/);\n      const mesNum = converterMesParaNumero(mesTexto);\n      const data_iso = `${ano_referencia}-${mesNum}-${dia.padStart(2, '0')}`;\n\n      output.push({\n        json: {\n          banco: \"Nubank\",\n          mes_referencia,\n          ano_referencia,\n          data_transacao: data_iso,\n          estabelecimento,\n          valor\n        }\n      });\n    }\n  } \n  \n  // ----------------------------------------------------\n  // EXTRAÇÃO PICPAY\n  // ----------------------------------------------------\n  else if (text.includes(\"PicPay\") || text.includes(\"Picpay\")) {\n    let mes_referencia = null;\n    let ano_referencia = \"2026\";\n    \n    const mesMatch = text.match(/fatura de\\s*([a-zA-Záàâãéèêíïóôõöúç]+)/i);\n    if (mesMatch) mes_referencia = mesMatch[1].trim().toLowerCase();\n    \n    const anoMatch = text.match(/Vencimento\\s*\\n?\\d{2}\\/\\d{2}\\/([\\d]{4})/i);\n    if (anoMatch) ano_referencia = anoMatch[1];\n\n    const regexTransacao = /(\\d{2}\\/\\d{2})\\s+([\\s\\S]*?)\\s+([\\d.,]+)\\n/g;\n    let match;\n\n    while ((match = regexTransacao.exec(text)) !== null) {\n      const data_resumida = match[1].trim();\n      const estabelecimento_bruto = match[2];\n      const valor_str = match[3];\n      \n      if (estabelecimento_bruto.toLowerCase().includes(\"estabelecimento\") || \n          estabelecimento_bruto.toLowerCase().includes(\"subtotal\") || \n          estabelecimento_bruto.toLowerCase().includes(\"total geral\")) {\n        continue;\n      }\n\n      const valor = parseFloat(valor_str.replace('.', '').replace(',', '.'));\n\n      // Aplica a limpeza segura\n      const estabelecimento = limparEstabelecimento(estabelecimento_bruto);\n\n      if (!estabelecimento) continue;\n\n      const [dia, mesNum] = data_resumida.split('/');\n      const data_iso = `${ano_referencia}-${mesNum.padStart(2, '0')}-${dia.padStart(2, '0')}`;\n\n      output.push({\n        json: {\n          banco: \"PicPay\",\n          mes_referencia,\n          ano_referencia,\n          data_transacao: data_iso,\n          estabelecimento,\n          valor\n        }\n      });\n    }\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        0
+      ],
+      "id": "62866839-b6f2-42b2-b25d-b4fb1dcda1f3",
+      "name": "Extrair PDF"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Pega os dados totais extraídos do PDF (ex: 121 itens)\nconst extraidas = $(\"Extrair PDF\").all();\n\nconst existentes = $('Execute a SQL query').all();\n\nconst chavesExistentes = new Set(\n  existentes.map(item => {\n    const valorNum = parseFloat(item.json.valor).toFixed(2);\n    return `${item.json.banco}|${item.json.data_transacao}|${item.json.estabelecimento}|${valorNum}`;\n  })\n);\n\nconst ineditas = [];\n\nfor (const t of extraidas) {\n  const dados = t.json;\n  const valorFormatado = dados.valor.toFixed(2);\n  const chave = `${dados.banco}|${dados.data_transacao}|${dados.estabelecimento}|${valorFormatado}`;\n  \n  if (!chavesExistentes.has(chave)) {\n    ineditas.push({ json: dados });\n  }\n}\n\nreturn ineditas;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        -16
+      ],
+      "id": "21011474-f14f-412a-be20-2935022a824f",
+      "name": "Filtrar Ineditos"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f7c41c18-fa56-4a8d-a7f5-16da63404c31",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        704,
+        0
+      ],
+      "id": "30cb91ea-27dc-46f5-9303-487a3af0ecc4",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get many messages": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Extrair PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Insert or update rows in a table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert or update rows in a table1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair PDF": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Ineditos": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Ineditos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "cadbdd07-6e61-4586-9dcf-e7ef3a824f5d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9819aaaca1d9294151d046aa5db35bbae2598c5dc13f655432ef63b4a27a275c"
+  },
+  "id": "OhKxtORBwShkf4wv",
+  "tags": []
+}
