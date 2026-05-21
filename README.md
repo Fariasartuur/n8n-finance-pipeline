@@ -69,3 +69,9 @@ Execute o script contido em init.sql no seu servidor PostgreSQL para instanciar 
 
 Abaixo está a interface do painel gerado no Power BI a partir do banco de dados populado pelo pipeline:
 > O dashboard inclui distribuição percentual por categorias mapeadas pela IA, histórico comparativo de despesas por instituição financeira (Nubank vs. PicPay) e detalhamento granular de transações ordenadas cronologicamente.
+
+<div align="center">
+  <img src="./assets/BI.png" alt="Dashboard Financeiro" width="600">
+</div>
+
+
